@@ -1,5 +1,7 @@
-#!/usr/bin/env python
+#!/usr/bin/env -S python -P
 # encoding=utf-8
+# 本文件与标准库 datetime 同名，必须用 -P（已写在 shebang 里）或 `python3 -P datetime.py` 运行：
+# 否则脚本所在目录会进入 sys.path[0]，遮蔽标准库 datetime，触发循环导入 ImportError。
 
 from __future__ import  unicode_literals, print_function
 
