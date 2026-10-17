@@ -36,34 +36,6 @@ def guess_unit(value):
     raise ValueError('时间戳超出 datetime 可表示范围: %d' % value)
 
 
-def diff_filetime():
-    unixtime = datetime(1970, 1, 1, tzinfo=timezone.utc)
-    filetime = datetime(1601, 1, 1, tzinfo=timezone.utc)
-    difftime = unixtime - filetime
-    return difftime
-
-
-# FILETIME 是 Windows 系统里表示时间的格式（注册表、GetFileTime、AD、EventLog、SQL Server、NTFS 时间戳都用它），特点是：
-#
-# 用 64 位无符号整数，拆成两个 32 位 DWORD：低 32 位 dwLowDateTime + 高 32 位 dwHighDateTime
-# 起点是 1601-01-01 00:00:00 UTC（不是 Unix 的 1970）
-# 单位是 100 纳秒（1e-7 秒），也叫 tick
-def from_filetime(args):
-    difftime = diff_filetime()
-
-    # dwLowDateTime
-    lo = int(args.argn[0])
-    # dwHighDateTime
-    hi = int(args.argn[1])
-
-    # + 优先级高于 <<，括号必须写，否则算成 (lo + hi) << 32
-    ft = lo + (hi << 32)
-
-    s = ft * 1e-7 - difftime.total_seconds()
-    t = datetime.utcfromtimestamp(s)
-    return t
-
-
 def from_timestamp(args):
     args.stamp = False
     value = int(args.argn[0])
@@ -87,7 +59,7 @@ def from_timestamp(args):
 
 def from_timestring(args):
     args.stamp = True
-    s = args.argn[0]
+    s = ' '.join(args.argn)
 
     if not s:
         return
@@ -122,17 +94,9 @@ def main():
     parser.add_argument('-p', '--print', action='store_true')
     parser.add_argument('-s', '--stamp', action='store_true')
 
-    parser.add_argument('-d', '--diff-filetime', action='store_true')
-
     parser.add_argument('argn', nargs='*')
 
     args = parser.parse_args()
-
-    if args.diff_filetime:
-        diff = diff_filetime()
-        print(diff)
-        print(diff.total_seconds(), 'seconds')
-        return
 
     if args.argn:
         argc = len(args.argn)
@@ -146,7 +110,7 @@ def main():
                 if not t:
                     return 1
         else:
-            t = from_filetime(args)
+            t = from_timestring(args)
     else:
         if args.utc:
             t = datetime.utcnow()
