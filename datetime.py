@@ -96,7 +96,7 @@ def from_timestring(argn, tz=None):
     return t if tz is None else t.replace(tzinfo=tz)
 
 
-def main():
+def build_parser():
     parser = argparse.ArgumentParser(
         description='时间戳 / 日期时间互转：给数字还日期时间，给日期时间还 epoch 秒')
 
@@ -117,6 +117,12 @@ def main():
                              '或 "日期 [时间] [时区]"；'
                              '或只给一个时区（显示该时区的当前时间）。'
                              '时区写法：UTC / Asia/Shanghai / +08:00 / -0530')
+
+    return parser
+
+
+def main():
+    parser = build_parser()
 
     args = parser.parse_args()
 
