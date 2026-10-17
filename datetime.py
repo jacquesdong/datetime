@@ -21,12 +21,21 @@ def diff_filetime():
     return difftime
 
 
+# FILETIME 是 Windows 系统里表示时间的格式（注册表、GetFileTime、AD、EventLog、SQL Server、NTFS 时间戳都用它），特点是：
+#
+# 用 64 位无符号整数，拆成两个 32 位 DWORD：低 32 位 dwLowDateTime + 高 32 位 dwHighDateTime
+# 起点是 1601-01-01 00:00:00 UTC（不是 Unix 的 1970）
+# 单位是 100 纳秒（1e-7 秒），也叫 tick
 def from_filetime(args):
     difftime = diff_filetime()
 
-    lo = int(args.arng[0])
-    hi = int(args.arng[1])
-    ft = lo + hi << 32
+    # dwLowDateTime
+    lo = int(args.argn[0])
+    # dwHighDateTime
+    hi = int(args.argn[1])
+
+    # + 优先级高于 <<，括号必须写，否则算成 (lo + hi) << 32
+    ft = lo + (hi << 32)
 
     s = ft * 1e-7 - difftime.total_seconds()
     t = datetime.utcfromtimestamp(s)
