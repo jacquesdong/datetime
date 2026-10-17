@@ -3,9 +3,7 @@
 # 本文件与标准库 datetime 同名，必须用 -P（已写在 shebang 里）或 `python3 -P datetime.py` 运行：
 # 否则脚本所在目录会进入 sys.path[0]，遮蔽标准库 datetime，触发循环导入 ImportError。
 
-from __future__ import  unicode_literals, print_function
 
-import os
 import re
 import sys
 
@@ -37,7 +35,6 @@ def guess_unit(value):
 
 
 def from_timestamp(args):
-    args.stamp = False
     value = int(args.argn[0])
     unit, scale = guess_unit(value)
 
@@ -58,28 +55,10 @@ def from_timestamp(args):
 
 
 def from_timestring(args):
-    args.stamp = True
     s = ' '.join(args.argn)
 
-    if not s:
-        return
+    return datetime.fromisoformat(s)
 
-    v = sys.version_info
-    if v.major >= 3 and v.minor >= 7:
-        return datetime.fromisoformat(s)
-
-    if len(s) > 8:
-        s = s.split('.')
-        t = datetime.strptime(s[0], "%Y-%m-%d %H:%M:%S")
-        if len(s) > 1:
-            t += timedelta(microseconds=float('.'+s[1])*1e6)
-    else:
-        t = datetime.strptime(s, "%Y-%m-%d")
-
-    if args.utc:
-        return t.replace(tzinfo=timezone.utc)
-    else:
-        return t
 
 def main():
     parser = argparse.ArgumentParser()
@@ -91,43 +70,40 @@ def main():
 
     parser.add_argument('-u', '--utc', action='store_true')
 
-    parser.add_argument('-p', '--print', action='store_true')
-    parser.add_argument('-s', '--stamp', action='store_true')
+    parser.add_argument('-s', '--stamp', action='store_true',
+                        help='无参数时输出 epoch 秒（而不是日期时间）')
 
     parser.add_argument('argn', nargs='*')
 
     args = parser.parse_args()
 
     if args.argn:
-        argc = len(args.argn)
-        if argc == 1:
+        if not all(args.argn):
+            parser.error('参数不能为空')
+
+        if len(args.argn) == 1:
             # 数字里允许用 _ 分组（如 1_792_189_920），规则同 Python 整数字面量：
             # _ 只能出现在两个数字之间；int() 本身也接受这种写法
             if re.search(r'^-?\d+(?:_\d+)*$', args.argn[0], re.ASCII):
                 t = from_timestamp(args)
+                print(t)
             else:
                 t = from_timestring(args)
-                if not t:
-                    return 1
+                print(t.timestamp())
         else:
             t = from_timestring(args)
+            print(t.timestamp())
     else:
         if args.utc:
             t = datetime.utcnow()
         else:
             t = datetime.now()
 
-    if not args.stamp:
-        args.print = True
+        if args.stamp:
+            print(t.timestamp())
+        else:
+            print(t)
 
-    if args.print:
-        print(t)
-
-    if args.stamp:
-        print(t.timestamp())
-
-    return 0
 
 if __name__ == '__main__':
   sys.exit(main())
-
