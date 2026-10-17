@@ -1,0 +1,57 @@
+[project]
+name = "datetime-cli"
+version = "0.1.0"
+description = "时间戳 / 日期时间互转命令行工具"
+requires-python = ">=3.11"
+dependencies = []
+
+# 开发依赖：uv 原生 dependency-group（PEP 735）
+[dependency-groups]
+dev = [
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "pytest>=8.3",
+]
+
+[tool.uv]
+# 让 `uv run pytest` 这类命令默认带上 dev 组
+default-groups = ["dev"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle 错误
+    "W",    # pycodestyle 警告
+    "F",    # pyflakes（未使用变量/导入等）
+    "I",    # import 排序
+    "UP",   # pyupgrade（用新语法）
+    "B",    # flake8-bugbear（常见坑）
+    "SIM",  # flake8-simplify
+    "RUF",  # ruff 专属规则
+]
+# 中文全角标点不该被判成“易混淆字符”
+ignore = [
+    "RUF001",
+    "RUF002",
+    "RUF003",
+    # Python 3 源文件默认就是 UTF-8，UP009 认为这行多余；但它同时是对文件编码的
+    # 显式声明，保留
+    "UP009",
+]
+
+[tool.mypy]
+python_version = "3.11"
+disallow_untyped_defs = true        # 所有函数必须标注类型
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_return_any = true
+no_implicit_optional = true
+strict_equality = true
+
+# 注意：没有 [tool.pytest.ini_options] 的 --doctest-modules 配置。本仓库的主模块
+# 叫 datetime.py，与标准库同名，pytest 收集时拿到的是标准库模块（报 import file
+# mismatch 或静默收集 0 个），所以 doctest 由 tools/run_doctests.py 驱动。
+# pytest 仍留在 dev 组里，方便以后加 tests/ 下的单元测试。
