@@ -14,6 +14,28 @@ import argparse
 from datetime import datetime, timezone, timedelta
 
 
+# datetime 能表示的年份是 1..9999，对应 epoch 秒的上界
+MAX_EPOCH_SECONDS = 253402300799          # 9999-12-31 23:59:59 UTC
+# 必须从小到大判断：第一个放得下的单位就是答案
+UNITS = (('s', 1), ('ms', 10 ** 3), ('us', 10 ** 6), ('ns', 10 ** 9))
+
+
+def guess_unit(value):
+    """按数量级推断时间戳单位，返回 (unit, scale)。
+
+    s   <= 2.5e11（12 位及以内）
+    ms  <= 2.5e14（15 位及以内）
+    us  <= 2.5e17（18 位及以内）
+    ns  其余，直到 2.5e20
+    超过上界说明不是这四种单位，报错。
+    """
+    v = abs(value)
+    for unit, scale in UNITS:
+        if v <= MAX_EPOCH_SECONDS * scale:
+            return unit, scale
+    raise ValueError('时间戳超出 datetime 可表示范围: %d' % value)
+
+
 def diff_filetime():
     unixtime = datetime(1970, 1, 1, tzinfo=timezone.utc)
     filetime = datetime(1601, 1, 1, tzinfo=timezone.utc)
@@ -44,11 +66,23 @@ def from_filetime(args):
 
 def from_timestamp(args):
     args.stamp = False
+    value = int(args.argn[0])
+    unit, scale = guess_unit(value)
+
+    # 整数运算保证大数不丢精度：秒部分给 fromtimestamp，
+    # 不足 1 秒的部分折算成微秒（datetime 的最小分辨率）后补上
+    whole, frac = divmod(abs(value), scale)
+    micros = frac * 1000000 // scale
+    sign = -1 if value < 0 else 1
+
     if args.utc:
         f = datetime.utcfromtimestamp
     else:
         f = datetime.fromtimestamp
-    return f(int(args.argn[0]))
+    t = f(sign * whole)
+    if micros:
+        t += timedelta(microseconds=sign * micros)
+    return t
 
 
 def from_timestring(args):
@@ -78,6 +112,11 @@ def from_timestring(args):
 def main():
     parser = argparse.ArgumentParser()
 
+    # argparse 判断“负数字”用的是实例上的私有正则（3.12 在 __init__ 里就地编译，
+    # 所以改模块级变量无效，必须改实例），且只匹配 -\d+、不认识 _，
+    # 于是 -1_000 会被当成未知选项。放宽它，让带 _ 的负数也能当位置参数。
+    parser._negative_number_matcher = re.compile(r'^-\d+(?:_\d+)*$|^-\d*\.\d+$')
+
     parser.add_argument('-u', '--utc', action='store_true')
 
     parser.add_argument('-p', '--print', action='store_true')
@@ -98,7 +137,9 @@ def main():
     if args.argn:
         argc = len(args.argn)
         if argc == 1:
-            if re.search(r'^\d+$', args.argn[0], re.ASCII):
+            # 数字里允许用 _ 分组（如 1_792_189_920），规则同 Python 整数字面量：
+            # _ 只能出现在两个数字之间；int() 本身也接受这种写法
+            if re.search(r'^-?\d+(?:_\d+)*$', args.argn[0], re.ASCII):
                 t = from_timestamp(args)
             else:
                 t = from_timestring(args)
