@@ -11,9 +11,13 @@
 # 注意：pre-push 以非 0 退出会让 git push 直接中止，所以同步失败会挡住推送，
 #       这比“推上去但本地没装上”更容易发现问题。
 #
-# 局限：只看 HEAD 这一个提交是否改动了 datetime.py。若一次 push 含多个提交、
-#       而改动不在最后一个提交上，这里会误判“未改动”而跳过。pre-push 的 stdin
-#       会给出 remote_sha..local_sha 范围，需要更严格时可以改成按范围判断。
+# 改动检测：
+#  - 作为 pre-push hook 被调用时，git 往 stdin 喂若干行 ref 更新：
+#      <local ref> <local sha1> <remote ref> <remote sha1>
+#    对每一行看 remote_sha..local_sha 范围内是否动了 datetime.py，覆盖“一次 push
+#    含多个提交、改动不在最后一个”的情况。
+#  - 新建分支时 remote_sha 全 0，退化成只看 local_sha 这一提交（多提交的新分支
+#    可能漏判，但下次推送会补上）；手动跑（stdin 为空）则只看 HEAD。
 
 set -eu
 
@@ -27,9 +31,49 @@ rel="datetime.py"
 dst_default="${HOME:?未设置 HOME，无法确定安装目录}/.local/bin/datetime"
 dst="${DATETIME_INSTALL_DIR:-$dst_default}"
 
-# HEAD 这个提交是否包含 datetime.py（root commit 需要 --root，amend 也能覆盖到）
-if ! git diff-tree --root --no-commit-id --name-only -r HEAD 2>/dev/null | grep -qx "$rel"; then
-    echo "$name: $rel 未改动，跳过同步" >&2
+# 改动检测：手动跑看 HEAD；pre-push 看 stdin 给的 remote_sha..local_sha 范围
+zeros="0000000000000000000000000000000000000000"
+if [ ! -t 0 ]; then
+    refs="$(cat)"
+else
+    refs=""
+fi
+
+touched_in_range() {
+    # $1=local_sha $2=remote_sha：范围内若动了 datetime.py 则输出文件名
+    if [ "$2" = "$zeros" ]; then
+        # 新建分支：只看 local_sha 这一个提交（多提交的新分支可能漏判）
+        git diff-tree --root --no-commit-id --name-only -r "$1" 2>/dev/null
+    else
+        # 已有分支：range diff（remote_sha..local_sha 内任一提交动了都算）
+        git diff --name-only "$2" "$1" 2>/dev/null
+    fi
+}
+
+changed=0
+if [ -n "$refs" ]; then
+    while IFS=' ' read -r lref lsha rref rsha; do
+        [ -z "$lsha" ] && continue
+        if touched_in_range "$lsha" "$rsha" | grep -qx "$rel"; then
+            changed=1
+            break
+        fi
+    done <<EOF
+$refs
+EOF
+else
+    # 手动跑：只看 HEAD 这一个提交
+    if git diff-tree --root --no-commit-id --name-only -r HEAD 2>/dev/null | grep -qx "$rel"; then
+        changed=1
+    fi
+fi
+
+if [ "$changed" -ne 1 ]; then
+    if [ -n "$refs" ]; then
+        echo "$name: 本次 push 未改动 $rel，跳过同步" >&2
+    else
+        echo "$name: $rel 未改动，跳过同步" >&2
+    fi
     exit 0
 fi
 
