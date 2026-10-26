@@ -1,6 +1,7 @@
 #!/usr/bin/env -S python -P
 # encoding=utf-8
-# 本文件与标准库 datetime 同名，必须用 -P（已写在 shebang 里）或 `python3 -P datetime.py` 运行：
+# 本文件与标准库 datetime 同名，以 datetime.py 运行时必须用 -P（已写在 shebang 里）
+# 或 `python3 -P datetime.py` 运行：
 # 否则脚本所在目录会进入 sys.path[0]，遮蔽标准库 datetime，触发循环导入 ImportError。
 
 import argparse
@@ -128,6 +129,13 @@ def from_timestamp(value: int, tz: tzinfo | None = None) -> datetime:
     datetime.datetime(2026, 10, 16, 22, 32, 0, 160073, tzinfo=datetime.timezone.utc)
     >>> from_timestamp(-1792189920, parse_tz('UTC'))           # 1970 之前
     datetime.datetime(1913, 3, 18, 1, 28, tzinfo=datetime.timezone.utc)
+
+    guess_unit 只按数量级判断，没算时区偏移，所以极端值仍可能越界，这里转成
+    ValueError 交给调用方报错（不让它冒成 traceback）：
+
+    >>> from_timestamp(253402300799, parse_tz('+14:00'))       # UTC 上界 + 正偏移
+    Traceback (most recent call last):
+    ValueError: 时间戳 253402300799 换算到 UTC+14:00 后超出 datetime 可表示范围（年份需在 1..9999）
     """
     _unit, scale = guess_unit(value)
 
@@ -135,10 +143,17 @@ def from_timestamp(value: int, tz: tzinfo | None = None) -> datetime:
     micros = frac * 1000000 // scale
     sign = -1 if value < 0 else 1
 
-    # 指定时区输出带偏移的 aware 时间；否则按本地时区输出墙钟时间
-    t = datetime.fromtimestamp(sign * whole, tz) if tz else datetime.fromtimestamp(sign * whole)
-    if micros:
-        t += timedelta(microseconds=sign * micros)
+    try:
+        # 指定时区输出带偏移的 aware 时间；否则按本地时区输出墙钟时间
+        t = datetime.fromtimestamp(sign * whole, tz) if tz else datetime.fromtimestamp(sign * whole)
+        if micros:
+            t += timedelta(microseconds=sign * micros)
+    except (OverflowError, ValueError) as e:
+        # 时区偏移会把结果推出 1..9999 年：同一数值在 UTC 合法、在 +14:00 就可能越界
+        # （负偏移方向则是下界先越）；微秒补偿也可能把 0001-01-01 顶到前一年。
+        tzname = str(tz) if tz is not None else '本地时区'
+        raise ValueError(f'时间戳 {value} 换算到 {tzname} 后超出 '
+                         f'datetime 可表示范围（年份需在 1..9999）') from e
     return t
 
 
@@ -222,9 +237,9 @@ def main() -> int:
         rest, tz = split_tz(args.argn)
 
         if len(rest) == 1 and NUMBER_RE.fullmatch(rest[0]):
-            t = from_timestamp(int(rest[0]), tz)      # 给数字还日期时间
+            t = from_timestamp(int(rest[0]), tz)  # 给数字还日期时间
         else:
-            t = from_timestring(rest, tz)             # 给日期时间还 epoch 秒
+            t = from_timestring(rest, tz)         # 给日期时间还 epoch 秒
             stamp = True
     else:
         t = datetime.now()
@@ -234,4 +249,4 @@ def main() -> int:
 
 
 if __name__ == '__main__':
-  sys.exit(main())
+    sys.exit(main())
